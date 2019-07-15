@@ -153,7 +153,7 @@ MAX_CONNECTIONS, .bluetooth.max_advertisers = MAX_ADVERTISERS, .bluetooth.heap =
 #define FLAG_RETRANS               0x01
 #define FLAG_NON_RETRANS           0x00
 
-#define MAX_TIMEOUT 			3
+#define MAX_TIME_OUT 			3
 //Global Variable
 ///Number of active Bluetooth connections
 static uint8 num_connections = 0;
@@ -165,27 +165,14 @@ static uint16 this_node_address;
 static uint16 primary_element = 0;
 static uint16 transaction_id = 0;
 static uint16 gateway_address = 1;
-mesh_data_t* mesh_data_array;
-mesh_status_t* mesh_status_array;
-//define Status Array
-/*static uint16 transaction_id = 0;
- static uint16 primary_element = 0;
- static uint16 secondary_element = 1;
- static uint16 third_element = 2;
- static uint16 response_flag = 0;
- static uint16 gateway_address = 1;
- typedef struct arr {
- uint8 status;
- uint16 address;
- uint8 mess_count;
- uint8 flag;
- } ;
- struct arr status_arr[MESH_CFG_MAX_FRIENDSHIPS];
- */
-//lpn_status lpn_status_arr;
+
+mesh_lpn_data_array_t mesh_lpn_data_array;
+
+static uint16 gateway_time_out;
+
 static uint8 index = 0;
 static uint8 num_lpn = 0;
-//mesh_data_t node_data;
+
 //User function
 static void button_init();
 static void led_init();
@@ -298,48 +285,7 @@ static void led_init() {
  }
  }*/
 void mesh_data_init() {
-	mesh_data_array = (uint16 *) malloc(
-			sizeof(uint16) * MESH_CFG_MAX_FRIENDSHIPS + 1);
-	if (mesh_data_array == NULL) {
-		printf("Out of memory !!! \r\n");
-		return;
-	}
-
-	mesh_data_array[0].unicast_address = gateway_address;
-	//gecko_cmd_mesh_node_get_element_address(primary_element)->result;
-	//printf("this node address %x",gecko_cmd_mesh_node_get_element_address(0)->address);
-	mesh_data_array[0].heart_beat = 1;
-	/*mesh_data_array.max_elements = MESH_CFG_MAX_FRIENDSHIPS+1;
-	 mesh_data_array.current_elements = 0;
-	 */
-	mesh_status_array = (mesh_status_t *) malloc(
-			sizeof(mesh_status_t) * (MESH_CFG_MAX_FRIENDSHIPS + 1));
-	if (mesh_status_array == NULL) {
-		printf("Out of memory !!! \r\n");
-		return;
-	}
-	mesh_status_array[0].packet_count = 0;
-	mesh_status_array[0].unicast_address = gateway_address;
-	//gecko_cmd_mesh_node_get_element_address(primary_element)->result;
-	/*struct gecko_msg_mesh_node_get_element_address_rsp_t *element_address;
-
-	 element_address = gecko_cmd_mesh_node_get_element_address(primary_element);
-	 if (element_address->result == 0) {
-	 gateway_data.unicast_address = element_address->address;
-	 printf("Primary Element, Unicast address = %d \r\n", gateway_data.unicast_address);
-	 }
-	 else {
-	 printf("Get Unicast address from Promary element failed !!! \r\n");
-	 }*/
-	/*struct gecko_msg_mesh_node_get_element_address_rsp_t *element_address;
-	 element_address = gecko_cmd_mesh_node_get_element_address(primary_element);
-	 if(element_address->result == 0){
-	 printf("result == 0\r\n");
-
-	 mesh_status_array[0].unicast_address =element_address->address;
-	 }*/
-	/*mesh_status_array.max_elements = MESH_CFG_MAX_FRIENDSHIPS+1;
-	 mesh_status_array.current_elements = 0;*/
+	gateway_time_out = 0;
 }
 void set_device_name(bd_addr *pAddr) {
 	char name[20];
@@ -373,17 +319,6 @@ void receive_node_init() {
 	//Re-init primary and secondary element
 	primary_element = 0;
 
-	//load PS store address
-	/*uint8* address_array;
-	 address_array = gecko_cmd_flash_ps_load(0x1234)->value.data;*/
-	/*printf("length %d\r\n", gecko_cmd_flash_ps_load(0x1234)->value.len);
-	 uint8 i = 0;
-	 for (; i < 2; i++) {
-	 printf("%x", address_array[i]);
-	 }
-	 printf("\r\n");
-	 this_node_address = address_array[0] + address_array[1] << 8;
-	 printf("this node address = %x\r\n", this_node_address);*/
 	//Initialize friend function
 	printf("Initialize friend function !!! \r\n");
 
@@ -391,24 +326,7 @@ void receive_node_init() {
 	if (result) {
 		printf("Friend init failed !!! \r\n");
 	}
-	// define gateway health status and timer that check gateway's heartbeat
-	/*gateway_health = 5;
-	 gecko_cmd_hardware_set_soft_timer(TIMER_CHECK_GATEWAY_HEART_BEAT,
-	 TIMER_ID_CHECK_GATEWAY_HEAT_BEAT, TIMER_REPEAT);*/
 
-	/*lpn_status_arr = (lpn_status*) malloc(
-	 sizeof(lpn_status) * (MESH_CFG_MAX_FRIENDSHIPS + 1));
-	 //init first index for gateway
-
-	 if (lpn_status_arr == NULL) {
-	 printf("Out of memory !!! \r\n");
-	 return;
-	 }
-	 {
-	 lpn_status_arr[0].address = 1;
-	 lpn_status_arr[0].status = 1;
-	 lpn_status_arr[0].timeOut = 0;
-	 }*/
 	printf("Init gateway status\r\n");
 	gecko_cmd_hardware_set_soft_timer(15 * 32768,
 	TIMER_ID_CHECK_HEALTH, TIMER_REPEAT);
@@ -428,102 +346,42 @@ static void pri_level_request(uint16_t model_id, uint16_t element_index,
 	if (request->kind != mesh_generic_request_level) {
 		return;
 	}
-	//printf("1\r\n");
-	clear_packet_count(client_addr, mesh_status_array, num_lpn);
-	int i = 0;
-	for (; i <= num_lpn; i++) {
-		printf("%d\t%d\r\n", mesh_status_array[i].unicast_address,
-				mesh_status_array[i].packet_count);
-	}
-	//get index
-	//printf("2\r\n");
-	int elem_index = get_index(client_addr, mesh_status_array, num_lpn);
-	//printf("3\r\n");
-	if (elem_index == -1) {
-		printf("can't find address\r\n");
+	if(client_addr == 1){
+		gateway_time_out = 0;
 		return;
 	}
-	//printf("4\r\n");
-	mesh_data_array[elem_index] = get_mesh_data(request->level);
-	//printf("5\r\n");
-	if (elem_index != 0) {
-		send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS, elem_index);
+	if (get_alarm_signal(request->level)){
+		// chuyen? len gateway ngay;
+		send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS, request->level);
+		return;
 	}
-	//printf("6\r\n");
-	/*mesh_data_array[elem_index].
-	 struct mesh_generic_request *req;
-	 req->kind = mesh_generic_request_level;*/
-	/*//TODO
-	 uint8 i = 0;
-	 for (; i <= num_lpn; i++) {
-	 printf("%d\t%d\t%d\t%d\r\n", i, lpn_status_arr[i].address,lpn_status_arr[i].status, lpn_status_arr[i].timeOut);
-	 }
-	 */
-	/*printf("request->level 1 %x\r\n", request->level);
-	 struct mesh_generic_request *req;
-	 req->kind = mesh_generic_request_level;
-	 refresh_timeOut(client_addr, lpn_status_arr, num_lpn);
-	 uint8 i = 0;
-	 for (; i <= num_lpn; i++) {
-	 printf("%d\t%d\t%d\t%d\r\n", i, lpn_status_arr[i].address,lpn_status_arr[i].status, lpn_status_arr[i].timeOut);
-	 }
-	 //check address co' trong lpn status array;
-	 uint8 result = is_friend_or_gateway_address(client_addr, lpn_status_arr, num_lpn);
-	 printf("result: %d", result);
-	 if(result){
-	 printf("request->level 2 %x\r\n", request->level);
-	 uint16 new_elem_index = get_lpn_status_index(client_addr,
-	 lpn_status_arr, num_lpn);
-	 node_data_arr[new_elem_index] = get_mesh_data(request->level);
-	 printf("%d\t%d\t%d\t%d\r\n",node_data_arr[new_elem_index].battery_percent,node_data_arr[new_elem_index].heart_beat,node_data_arr[new_elem_index].unicast_address, node_data_arr[new_elem_index].alarm_signal);
+	// thuc. hien cap nhat.
+	int i = 0;
+	for (; i < mesh_lpn_data_array.num_lpn; i++) {
+		if(mesh_lpn_data_array.mesh_lpn_data[i].unicast_address == get_unicast_address(request->level))
+		{
+			mesh_lpn_data_array.mesh_lpn_data[i] = message2data(request->level);
+			return;
+		}
+	}
 
-	 node_data_arr[new_elem_index].heart_beat = lpn_status_arr[new_elem_index].status;
-	 //req->level = set_mesh_data(node_data_arr[new_elem_index]);
-	 if(new_elem_index != 0){
-	 //node_data.heart_beat = lpn_status_arr[new_elem_index].status;
-	 send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS,new_elem_index);
-	 }
-	 }
-	 */
-	//uint16 index = get_lpn_status_index (client_addr, lpn_status_arr, num_lpn);
-	/*node_data = get_mesh_data(request->level);*/
-	/*if (node_data.alarm_signal != 0) {
-	 //printf("message receive level %x\r\n", req->level);
-	 /*uint16 new_elem_index = get_lpn_status_index(client_addr,
-	 lpn_status_arr, num_lpn);
-	 node_data.heart_beat = lpn_status_arr[new_elem_index].status;
-	 printf("node_data: %d\t%d\t%d\t%d to %d\r\n", node_data.alarm_signal,
-	 node_data.battery_percent, node_data.heart_beat,
-	 node_data.unicast_address, gateway_address);
-	 //node_data = get_mesh_data(request->level);
-	 req->level = set_mesh_data(node_data);
-	 if (new_elem_index == 0) {
-	 send_mesh_data(FLAG_RESPONSE, FLAG_NON_RETRANS, new_elem_index);
-	 //printf("level message: %x\r\n", req->level);
-	 } else
-	 send_mesh_data(FLAG_RESPONSE, FLAG_NON_RETRANS, new_elem_index);
-	 }*/
 }
 static void pri_level_change(uint16_t model_id, uint16_t element_index,
 		const struct mesh_generic_state *current,
 		const struct mesh_generic_state *target, uint32_t remaining_ms) {
 }
-void send_mesh_data(uint8 response_flag, uint8 retransmit, int element_index) {
+void send_mesh_data(uint8 response_flag, uint8 retransmit, uint16 message) {
 	uint16 resp;
 	uint32_t transition_ms = 0;
 	uint16_t delay_ms = 0;
+	uint16 element_index = 0;
 	struct mesh_generic_request req;
 
 	printf("Send Mesh Data Function \r\n");
 	printf("***********************\r\n");
 
 	req.kind = mesh_generic_request_level;
-	req.level = set_mesh_data(mesh_data_array[element_index]);
-	if (element_index == 0) {
-		req.level &= 0xFF03;
-		printf("this node address %x\r\n",gecko_cmd_mesh_node_get_element_address(0)->address);
-		req.level |= ((gecko_cmd_mesh_node_get_element_address(0)->address)	& 0x3F) << 2;
-	}
+	req.level = message;
 
 	//uint16 test = set_mesh_data(&node_data_arr[element_index]);
 	printf("node data %x \r\n", req.level);
@@ -539,28 +397,31 @@ void send_mesh_data(uint8 response_flag, uint8 retransmit, int element_index) {
 	MESH_GENERIC_LEVEL_CLIENT_MODEL_ID, element_index, gateway_address,
 	APP_KEY_INDEX, transaction_id, &req, transition_ms, delay_ms,
 			response_flag);
-
 	if (resp) {
 		printf("Send Mesh data failed !!! \r\n");
 	} else {
 		printf("Mesh data sent %x!!! \r\n", req.level);
 	}
 }
+void send_data_array2gateway(){
+	struct gecko_msg_mesh_node_get_element_address_rsp_t *node_address;
 
-/*void update_and_check_timeOut(lpn_status* array, uint16 num_lpn) {
- uint8 i = 0;
- for (; i <= num_lpn; i++) {
- array[i].timeOut++;
- if (array[i].timeOut > 2) {
- array[i].status = 0;
- if (i == 0)
- gateway_address = 2;
- else
- send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS, i);
- }
- }
- }
- */
+		node_address = gecko_cmd_mesh_node_get_element_address(primary_element);
+		if (node_address->result == 0) {
+			printf("this node address: %x \r\n");
+		} else {
+			printf("Get Unicast address from Promary element failed !!! \r\n");
+		}
+	uint16 this_friend_node_data = 0x0;
+	this_friend_node_data |= node_address->address <<1;
+	this_friend_node_data |= 1 <<8;
+	this_friend_node_data |= 100 <<9;
+	send_mesh_data(FLAG_RESPONSE, FLAG_NON_RETRANS, this_friend_node_data);
+	uint8 i;
+	for (i = 0; i < mesh_lpn_data_array.num_lpn; i++){
+		send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS, data2message(mesh_lpn_data_array.mesh_lpn_data[i]));
+	}
+}
 static void handle_gecko_event(uint32_t evt_id, struct gecko_cmd_packet *evt) {
 	uint16 result;
 	char buf[30];
@@ -609,35 +470,22 @@ static void handle_gecko_event(uint32_t evt_id, struct gecko_cmd_packet *evt) {
 			//TODO
 		case TIMER_ID_CHECK_HEALTH: {
 			printf("CHECK HEALTH\r\n");
-			//check gateway
-			mesh_status_array[0].packet_count++;
-			if (mesh_status_array[0].packet_count > MAX_TIMEOUT) {
+			gateway_time_out++;
+			if(gateway_time_out > MAX_TIME_OUT){
 				gateway_address = 2;
 			}
-			send_mesh_data(FLAG_RESPONSE, FLAG_NON_RETRANS, 0);
-			uint16 index = 1;
-			for (; index <= num_lpn; index++) {
-				mesh_status_array[index].packet_count++;
-				if (mesh_status_array[index].packet_count > MAX_TIMEOUT) {
-					mesh_data_array[index].heart_beat = 0;
+			else
+				gateway_address = 1;
+			//nho' reset bien timeOut khi nhan dc goi' tin tu` Gateway
+			uint8 i = 0;
+			for(;i < mesh_lpn_data_array.num_lpn; i++){
+				mesh_lpn_data_array.mesh_lpn_data[i].time_out++;
+				if(mesh_lpn_data_array.mesh_lpn_data[i].time_out > MAX_TIME_OUT){
+					mesh_lpn_data_array.mesh_lpn_data[i].heart_beat = 0;
 				}
-				send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS, index);
 			}
-
+			send_data_array2gateway();
 		}
-			/*uint8 elem_index = 1;
-			 for (; elem_index <= num_lpn; elem_index++) {
-			 lpn_status_arr[elem_index].timeOut++;
-			 if(lpn_status_arr[elem_index].timeOut > MAX_TIMEOUT){
-			 node_data_arr[elem_index].heart_beat = 0;
-			 }
-			 printf("CHECK HEALTH\r\n");
-			 send_mesh_data(FLAG_NON_RESPONSE, FLAG_NON_RETRANS, elem_index);
-			 }
-			 //send_mesh_data of this receiver node
-			 send_mesh_data(FLAG_RESPONSE, FLAG_NON_RETRANS, 0);
-
-			 }*/
 			break;
 		default:
 			break;
@@ -682,16 +530,7 @@ static void handle_gecko_event(uint32_t evt_id, struct gecko_cmd_packet *evt) {
 		LCD_write("Provisioned !!!", LCD_ROW_INFO);
 
 		printf("Device Provisioned !!!!!!\r\n");
-		/*this_node_address = evt->data.evt_mesh_node_provisioned.address;*/
-		/*uint8* address_array;
-		 address_array[0] = this_node_address;*/
-		//address_array[1] = this_node_address >> 8;
-		/*printf("this node address: %x \r\n", this_node_address);*/
-		/*uint16 resp = gecko_cmd_flash_ps_save(0x1234, 16, address_array)->result;*/
-		/*printf("resp %x", resp);*/
-
 		receive_node_init();
-
 		gecko_cmd_hardware_set_soft_timer(0, TIMER_ID_BLINK_LED, 1);
 		GPIO_PinOutClear(BSP_LED0_PORT, BSP_LED0_PIN);
 		GPIO_PinOutClear(BSP_LED1_PORT, BSP_LED1_PIN);
@@ -716,11 +555,6 @@ static void handle_gecko_event(uint32_t evt_id, struct gecko_cmd_packet *evt) {
 	case gecko_evt_mesh_generic_server_client_request_id:
 		printf("Receive message from %d  !!! \r\n",
 				evt->data.evt_mesh_generic_server_client_request.client_address);
-		/*uint16 client_address =
-		 evt->data.evt_mesh_generic_server_client_request.client_address;
-		 /*	result = is_friend_or_gateway_address(client_address, lpn_status_arr,
-		 num_lpn);*/
-
 		mesh_lib_generic_server_event_handler(evt);
 		break;
 
@@ -745,16 +579,14 @@ static void handle_gecko_event(uint32_t evt_id, struct gecko_cmd_packet *evt) {
 		printf("num_lpn %d \r\n", num_lpn);
 		uint16 new_friendship_address =
 				evt->data.evt_mesh_friend_friendship_established.lpn_address;
-		if (num_lpn <= MESH_CFG_MAX_FRIENDSHIPS) {
-			//uint16 id_in_array = find_id_by_address(new_friendship_address, STATUS_ARRAY);
-			mesh_status_array[num_lpn].unicast_address = new_friendship_address;
-			mesh_status_array[num_lpn].packet_count = 0;
-			mesh_data_array[num_lpn].unicast_address = new_friendship_address;
-			mesh_data_array[num_lpn].heart_beat = 1;
-			mesh_data_array[num_lpn].battery_percent = 100;
-			mesh_data_array[num_lpn].alarm_signal = 0;
-			printf("%d\t%d\r\n", mesh_status_array[num_lpn].unicast_address,
-					mesh_status_array[num_lpn].packet_count);
+		if (mesh_lpn_data_array.num_lpn < MESH_CFG_MAX_FRIENDSHIPS) {
+			mesh_lpn_data_array.mesh_lpn_data = (mesh_lpn_data_str *) realloc(
+					mesh_lpn_data_array.mesh_lpn_data,
+					sizeof(mesh_lpn_data_str)
+							* (mesh_lpn_data_array.num_lpn
+									+ 1));
+			mesh_lpn_data_array.mesh_lpn_data[mesh_lpn_data_array.num_lpn] = message2data((new_friendship_address& 0x7f)<<1);
+			mesh_lpn_data_array.num_lpn++;
 		} else {
 			printf("Max number of friendship was established");
 		}
@@ -766,13 +598,11 @@ static void handle_gecko_event(uint32_t evt_id, struct gecko_cmd_packet *evt) {
 		LCD_write("NO LPN", LCD_ROW_FRIEND_INFOR);
 		gecko_cmd_mesh_friend_deinit();
 		//clear_lpn_status_arr(lpn_status_arr, num_lpn);
-		uint8 index = 1;
-		for (; index <= MESH_CFG_MAX_FRIENDSHIPS; index++) {
-			mesh_status_array[index].packet_count = 0;
-			mesh_status_array[index].unicast_address = 0;
+		free(mesh_lpn_data_array.mesh_lpn_data);
+		//tao. delay
+		uint8 i = 0;
+		for(;i < 100;i++){}
 
-		}
-		num_lpn = 0;
 		gecko_cmd_mesh_friend_init();
 		break;
 

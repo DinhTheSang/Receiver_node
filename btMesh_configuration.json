@@ -22,42 +22,12 @@
         ,
         "Vendor Models": [
           ]
-      },
-      {
-        "Name": "Secondary Element",
-        "Loc": "0x1000",
-        "NumS": "3",
-        "NumV": "0",
-        "SIG Models": [
-          "0x0000",
-          "Configuration Server",
-          "0x1002",
-          "Generic Level Server",
-          "0x1003",
-          "Generic Level Client"]
-        ,
-        "Vendor Models": [
-          ]
-      },
-      {
-        "Name": "Third Element",
-        "Loc": "0x1000",
-        "NumS": "2",
-        "NumV": "0",
-        "SIG Models": [
-          "0x1002",
-          "Generic Level Server",
-          "0x1003",
-          "Generic Level Client"]
-        ,
-        "Vendor Models": [
-          ]
       }]
     
   },
   "Memory configuration": {
-    "MAX_ELEMENTS": "3",
-    "MAX_MODELS": "8",
+    "MAX_ELEMENTS": "1",
+    "MAX_MODELS": "3",
     "MAX_APP_BINDS": "4",
     "MAX_SUBSCRIPTIONS": "4",
     "MAX_NETKEYS": "4",
